@@ -9,3 +9,58 @@
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-out;
 }
+
+/* alias with hyphen for components that used different naming */
+.animate-fade-in { @apply animate-fadeIn; }
+
+@layer base {
+  :root {
+    --bg: #fffdfa;
+    --muted: #6b7280;
+    --primary: #B77466;
+    --secondary: #957C62;
+    --accent: #FFE1AF;
+    --warm: #E2B59A;
+  }
+
+  html, body, #root {
+    height: 100%;
+    background: linear-gradient(180deg, var(--accent) 0%, #fffdfa 60%);
+    color: #2b231f;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+  }
+
+  a { color: theme('colors.secondary.DEFAULT'); }
+}
+
+/* Accessibility: better focus outlines */
+@layer base {
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: 3px solid rgba(183,116,102,0.18);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-white px-4 py-2 rounded-md shadow hover:bg-primary-600 transform hover:-translate-y-0.5 transition;
+  }
+
+  .card-soft {
+    @apply bg-white rounded-lg shadow p-4 transform transition hover:shadow-lg hover:-translate-y-1;
+  }
+}
+
+/* Decorative gradient banner classes */
+.hero-gradient {
+  background: linear-gradient(90deg, rgba(183,116,102,0.06) 0%, rgba(149,124,98,0.04) 100%);
+}
+
+/* small variant for cards using warm tone */
+.card-warm {
+  background: linear-gradient(180deg, rgba(226,181,154,0.06), rgba(255,225,175,0.02));
+}

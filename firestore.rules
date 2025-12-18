@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Public read for product catalog (development convenience)
+    match /products/{productId} {
+      allow read: if true;           // allow read for everyone
+      allow write: if false;         // disable public writes
+    }
+
+    // Per-user data (addresses, wishlist, paymentMethods, user profile)
+    match /users/{userId} {
+      // Allow the signed-in user to read/write their own user doc and nested subcollections
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /{subPath=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Orders: allow creation by authenticated users, reading only by owner
+    match /orders/{orderId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // default: deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Public read for product catalog (development convenience)
+    match /products/{productId} {
+      allow read: if true;           // allow read for everyone
+      allow write: if false;        // disable public writes (use admin/backend for writes)
+    }
+
+    // Per-user data (addresses, wishlist, paymentMethods, user profile)
+    match /users/{userId} {
+      // Allow the signed-in user to read/write their own user doc and nested subcollections
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /{subPath=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Orders: allow creation by authenticated users, reading only by owner
+    match /orders/{orderId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // default: deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

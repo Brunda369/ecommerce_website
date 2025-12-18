@@ -4,17 +4,18 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './tailwind.css';
 import { AuthProvider } from './contexts/AuthContext'
+import { ToastProvider } from './contexts/ToastContext'
 
 
 
 createRoot(document.getElementById('root')).render(
 <React.StrictMode>
 <BrowserRouter>
-<AuthProvider>
-
-<App />
-
-</AuthProvider>
+	<AuthProvider>
+		<ToastProvider>
+			<App />
+		</ToastProvider>
+	</AuthProvider>
 </BrowserRouter>
 </React.StrictMode>
 )
