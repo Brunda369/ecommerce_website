@@ -1,7 +1,6 @@
-import React, { useState } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import Header from "./components/Layout/Header";
-import Footer from "./components/Layout/Footer";
+import React from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import AppLayout from "./components/Layout/AppLayout";
 import ProductDetail from "./components/Products/ProductDetail";
 import CartPage from "./components/Cart/CartPage";
 import CheckoutPage from "./components/Checkout/CheckoutPage";
@@ -9,7 +8,7 @@ import { CartProvider } from "./components/Cart/CartContext";
 import { SearchProvider } from "./contexts/SearchContext";
 import HomePage from "./Pages/HomePage";
 import LandingPage from "./Pages/LandingPage";
-import LoginModal from "./components/Auth/LoginModal";
+// Login now uses a dedicated page instead of a modal
 import LoginPage from "./Pages/LoginPage";
 import SearchPage from "./Pages/SearchPage";
 import ProfilePage from "./components/User/ProfilePage";
@@ -28,40 +27,13 @@ function LandingGate() {
 }
 
 export default function App() {
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [redirectAfterLogin, setRedirectAfterLogin] = useState(null);
-  const navigate = useNavigate();
-
-  // openLoginModal can accept an optional redirect path
-  const openLoginModal = (redirect) => {
-    // default to current path if not provided
-    const to = redirect ?? (typeof window !== "undefined" ? window.location.pathname : "/home");
-    setRedirectAfterLogin(to);
-    setShowLoginModal(true);
-  };
-
-  const closeLoginModal = () => {
-    setShowLoginModal(false);
-    setRedirectAfterLogin(null);
-  };
-
-  const handleLoginSuccess = () => {
-    setShowLoginModal(false);
-    const to = redirectAfterLogin || "/home";
-    setRedirectAfterLogin(null);
-    // navigate after short delay to allow modal to close
-    setTimeout(() => navigate(to), 50);
-  };
 
   return (
     <CartProvider>
       <SearchProvider>
         <div className="flex flex-col min-h-screen">
-          <Header openLoginModal={openLoginModal} />
-
-          <main className="flex-1 mt-6">
-            <div className="max-w-7xl mx-auto px-4">
-            <Routes>
+          <Routes>
+            <Route element={<AppLayout />}>
               <Route path="/" element={<LandingGate />} />
               <Route path="/landing" element={<LandingPage />} />
               <Route path="/home" element={<HomePage />} />
@@ -69,21 +41,15 @@ export default function App() {
               <Route path="/cart" element={<CartPage />} />
               <Route path="/product/:id" element={<ProductDetail />} />
               <Route path="/wishlist" element={<WishlistPage />} />
-              <Route path="/login" element={<LoginPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/orders" element={<OrdersPage />} />
               <Route path="/order/:orderId" element={<OrderDetails />} />
+            </Route>
 
-              {/* other routes */}
-            </Routes>
-            </div>
-          </main>
-          <Footer />
-          <MobileNav />
-          {showLoginModal && (
-            <LoginModal onClose={closeLoginModal} onSuccess={handleLoginSuccess} />
-          )}
+            {/* standalone routes (no header/footer) */}
+            <Route path="/login" element={<LoginPage />} />
+          </Routes>
         </div>
       </SearchProvider>
     </CartProvider>

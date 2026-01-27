@@ -16,12 +16,29 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
   const query = useQuery();
-  const redirect = query.get("redirect") || "/home";
+  const rawRedirect = query.get("redirect");
+  const redirect = rawRedirect ? decodeURIComponent(rawRedirect) : null;
   const toast = useToast();
 
   const onSuccessNavigate = () => {
     setBusy(false);
-    navigate(redirect);
+    if (redirect) {
+      navigate(redirect);
+      return;
+    }
+    try {
+      navigate(-1);
+    } catch (e) {
+      navigate("/home");
+    }
+  };
+
+  // Helper: fail auth attempts after timeout so UI doesn't hang indefinitely
+  const withTimeout = (promise, ms = 15000) => {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timed out')), ms)),
+    ]);
   };
 
   const handleSubmit = async (e) => {
@@ -29,9 +46,9 @@ export default function LoginPage() {
     setBusy(true);
     try {
       if (isRegistering) {
-        await registerWithEmail(email, password);
+        await withTimeout(registerWithEmail(email, password));
       } else {
-        await loginWithEmail(email, password);
+        await withTimeout(loginWithEmail(email, password));
       }
       onSuccessNavigate();
     } catch (err) {
@@ -43,7 +60,7 @@ export default function LoginPage() {
   const handleGoogle = async () => {
     setBusy(true);
     try {
-      await loginWithGoogle();
+      await withTimeout(loginWithGoogle());
       onSuccessNavigate();
     } catch (err) {
       toast.error(err.message || "Google sign-in failed");
@@ -54,8 +71,19 @@ export default function LoginPage() {
   const handleGuest = async () => {
     setBusy(true);
     try {
-      await continueAsGuest();
-      onSuccessNavigate();
+      await withTimeout(continueAsGuest());
+      // Small delay to allow auth state to propagate in the app (prevents routing races)
+      await new Promise((res) => setTimeout(res, 250));
+      // If the redirect target is a protected purchase route, don't send anonymous users there.
+      const protectedPrefixes = ["/checkout", "/order", "/profile", "/orders"];
+      const shouldBlock = redirect ? protectedPrefixes.some((p) => redirect.startsWith(p)) : false;
+      if (shouldBlock) {
+        toast.info("Signed in as guest. To complete purchases you must log in.");
+        setBusy(false);
+        navigate("/home");
+      } else {
+        onSuccessNavigate();
+      }
     } catch (err) {
       toast.error(err.message || "Guest login failed");
       setBusy(false);
@@ -73,6 +101,9 @@ export default function LoginPage() {
           </div>
         </div>
         <div className="w-full md:w-2/3">
+        <div className="flex justify-end mb-2 md:hidden">
+          <button onClick={() => navigate(-1)} className="text-gray-500">Close</button>
+        </div>
         <h2 className="text-2xl font-semibold text-center mb-4">{isRegistering ? "Create an account" : "Sign in to your account"}</h2>
 
         <form onSubmit={handleSubmit} className="space-y-3">

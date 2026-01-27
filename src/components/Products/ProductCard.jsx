@@ -31,7 +31,7 @@ export default function ProductCard({ product }) {
   return (
     <div className="bg-white border rounded-lg overflow-hidden hover:shadow-2xl transition transform hover:-translate-y-1 card-soft animate-fadeIn">
       <Link to={`/product/${pid}`} className="block">
-        <div className="w-full h-44 sm:h-48 md:h-56 bg-gray-100 relative overflow-hidden">
+        <div className="w-full h-36 sm:h-44 md:h-56 bg-gray-100 relative overflow-hidden">
           <img
             src={image}
             alt={product.name}
@@ -75,24 +75,24 @@ export default function ProductCard({ product }) {
         </div>
       </Link>
 
-      <div className="p-4">
-        <h3 className="text-lg font-semibold text-gray-800 truncate">{product.name}</h3>
-        <p className="text-sm text-gray-500 mt-2 line-clamp-2">{product.description}</p>
+        <div className="p-3 sm:p-4">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-800 truncate">{product.name}</h3>
+          <p className="text-xs sm:text-sm text-gray-500 mt-2 line-clamp-2">{product.description}</p>
 
-        <div className="mt-4 flex items-center justify-between">
-          <div className="flex flex-col">
-            <div className="text-sm text-gray-600">{product.rating} ★</div>
-            <div className="text-xs text-gray-400">Free delivery available</div>
+          <div className="mt-3 flex items-center justify-between">
+            <div className="flex flex-col">
+              <div className="text-sm text-gray-600">{product.rating} ★</div>
+              <div className="text-[10px] text-gray-400">Free delivery</div>
+            </div>
+
+            <button
+              onClick={() => addToCart(product)}
+              className="btn-primary px-3 py-2 text-sm"
+            >
+              Add
+            </button>
           </div>
-
-          <button
-            onClick={() => addToCart(product)}
-            className="btn-primary"
-          >
-            Add to Cart
-          </button>
         </div>
-      </div>
     </div>
   );
 }

@@ -11,18 +11,41 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   updatePassword,
+  setPersistence,
+  browserLocalPersistence,
 } from "firebase/auth";
 import { db } from "../config/firebaseConfig";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { app } from "../config/firebaseConfig"; // ✅ Ensure firebaseConfig exports `app`
+import { subscribeToUserData } from '../services/userService';
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
+  const [userData, setUserData] = useState({ profile: null, wishlist: [], addresses: [] });
   const [loading, setLoading] = useState(true);
   const auth = getAuth(app);
+  // Ensure auth state persists across refreshes (necessary for anonymous users)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { setPersistence, browserLocalPersistence } = await import('firebase/auth');
+        if (mounted && setPersistence && browserLocalPersistence) {
+          try {
+            await setPersistence(auth, browserLocalPersistence);
+          } catch (err) {
+            console.warn('Failed to set auth persistence', err);
+          }
+        }
+      } catch {
+        // dynamic import failed — ignore
+      }
+    })();
+    return () => { mounted = false; };
+  }, [auth]);
   // Persist or update a minimal user record in Firestore
   const saveUserToFirestore = async (user) => {
     if (!user || !user.uid) return;
@@ -45,22 +68,43 @@ export const AuthProvider = ({ children }) => {
   };
 
   const continueAsGuest = async () => {
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+  } catch (err) {
+    // ignore persistence error, continue to sign in
+    console.warn('setPersistence failed (guest)', err);
+  }
   const cred = await signInAnonymously(auth);
   if (cred?.user) await saveUserToFirestore(cred.user);
 };
 
   const loginWithGoogle = async () => {
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (err) {
+      console.warn('setPersistence failed (google)', err);
+    }
     const provider = new GoogleAuthProvider();
     const cred = await signInWithPopup(auth, provider);
     if (cred?.user) await saveUserToFirestore(cred.user);
   };
 
   const register = async (email, password) => {
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (err) {
+      console.warn('setPersistence failed (register)', err);
+    }
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     if (cred?.user) await saveUserToFirestore(cred.user);
   };
 
   const loginWithEmail = async (email, password) => {
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (err) {
+      console.warn('setPersistence failed (email)', err);
+    }
     const cred = await signInWithEmailAndPassword(auth, email, password);
     if (cred?.user) await saveUserToFirestore(cred.user);
   };
@@ -78,6 +122,19 @@ export const AuthProvider = ({ children }) => {
     });
     return unsubscribe;
   }, [auth]);
+
+  // Subscribe to real-time user data (profile, wishlist, addresses)
+  useEffect(() => {
+    let unsubscribe = null;
+    if (currentUser && currentUser.uid) {
+      unsubscribe = subscribeToUserData(currentUser.uid, (data) => {
+        setUserData(data || { profile: null, wishlist: [], addresses: [] });
+      });
+    } else {
+      setUserData({ profile: null, wishlist: [], addresses: [] });
+    }
+    return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
+  }, [currentUser]);
 
   const updateProfileData = async ({ displayName, photoURL }) => {
     if (!auth.currentUser) throw new Error("Not authenticated");
@@ -98,6 +155,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider
       value={{
         currentUser,
+        userData,
         loginWithGoogle,
         continueAsGuest,
         register,

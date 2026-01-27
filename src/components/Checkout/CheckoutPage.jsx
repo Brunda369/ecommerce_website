@@ -20,9 +20,9 @@ export default function CheckoutPage() {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const toast = useToast();
-  // If not authenticated, redirect to the full login page with redirect query
+  // If not authenticated or signed in as an anonymous guest, redirect to login page
   React.useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser || currentUser.isAnonymous) {
       navigate(`/login?redirect=${encodeURIComponent("/checkout")}`);
     }
   }, [currentUser, navigate]);

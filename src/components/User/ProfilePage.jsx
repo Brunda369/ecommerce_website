@@ -3,8 +3,10 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { db } from "../../config/firebaseConfig";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
-import { createAddress, updateAddress, deleteAddress } from '../../services/addressService';
-import { useNavigate } from "react-router-dom";
+import { createAddress, updateAddress, deleteAddress, listAddresses } from '../../services/addressService';
+import { listWishlist, removeFromWishlist } from '../../services/wishlistService';
+import { FiBox, FiHeart, FiUser, FiLock, FiMapPin, FiLogOut } from 'react-icons/fi';
+import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from '../../contexts/toastCore';
 import PaymentMethods from './PaymentMethods';
 import { GEOCODE_PROVIDER, GEOCODE_KEY } from '../../config/geocodeConfig';
@@ -14,9 +16,10 @@ export default function ProfilePage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
-  const [editMode, setEditMode] = useState(false);
-  const [selectedTab, setSelectedTab] = useState('orders');
+  
+  const [selectedTab, setSelectedTab] = useState('overview');
   const [name, setName] = useState("");
   const [photo, setPhoto] = useState("");
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -26,6 +29,8 @@ export default function ProfilePage() {
   const [addrLoading, setAddrLoading] = useState(false);
   const [newAddress, setNewAddress] = useState({ id: null, label: '', line1: '', line2: '', city: '', state: '', pincode: '', phone: '', location: null });
   const [addrErrors, setAddrErrors] = useState({});
+  const [wishlist, setWishlist] = useState([]);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -36,21 +41,16 @@ export default function ProfilePage() {
           where("userId", "==", currentUser.uid),
           orderBy("createdAt", "desc")
         );
-
         const querySnapshot = await getDocs(q);
-        const orderList = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        const orderList = querySnapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         setOrders(orderList);
-      } catch (error) {
-        console.error("❌ Error fetching orders:", error);
+      } catch (err) {
+        console.error('Error loading orders', err);
       } finally {
         setLoading(false);
       }
     };
-
-    fetchOrders();
+    if (currentUser) fetchOrders();
   }, [currentUser]);
 
   useEffect(() => {
@@ -95,20 +95,41 @@ export default function ProfilePage() {
     if (addressesMode) fetchAddresses();
   }, [addressesMode, currentUser]);
 
-  if (!currentUser) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center">
-        <h2 className="text-2xl font-semibold mb-2">You are not logged in</h2>
-        <p className="text-gray-500 mb-4">Please log in or continue as a guest to view your profile.</p>
-        <button
-          onClick={() => navigate("/home")}
-          className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700"
-        >
-          Go to Home
-        </button>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const fetchInitial = async () => {
+      if (!currentUser) return;
+      // preload wishlist
+      setWishlistLoading(true);
+      try {
+        const list = await listWishlist(currentUser.uid);
+        setWishlist(list || []);
+      } catch (err) {
+        console.error('Failed to load wishlist', err);
+      } finally {
+        setWishlistLoading(false);
+      }
+
+      // preload addresses
+      try {
+        const addrs = await listAddresses(currentUser.uid);
+        setAddresses(addrs || []);
+      } catch (err) {
+        console.error('Failed to load addresses', err);
+      }
+    };
+
+    fetchInitial();
+  }, [selectedTab, currentUser]);
+
+  // Redirect unauthenticated users to login, preserving the target path
+  useEffect(() => {
+    if (!currentUser) {
+      const redirectTo = encodeURIComponent((location.pathname + (location.search || '')) || '/profile');
+      navigate(`/login?redirect=${redirectTo}`);
+    }
+  }, [currentUser, navigate, location]);
+
+  if (!currentUser) return null;
 
   const userName = currentUser.displayName || "Guest User";
   const userEmail = currentUser.email || "Guest (No email)";
@@ -130,68 +151,37 @@ export default function ProfilePage() {
   return (
     <div className="max-w-6xl mx-auto px-6 py-10">
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Left: Profile Card */}
+        {/* Left: Profile Card + Nav */}
         <aside className="lg:col-span-1 bg-white rounded-lg shadow p-6">
           <div className="flex flex-col items-center text-center">
             <img src={userPhoto} alt="Profile" className="w-28 h-28 rounded-full border p-1 object-cover" />
             <h3 className="mt-4 text-xl font-semibold text-gray-800">{userName}</h3>
             <p className="text-sm text-gray-500">{userEmail}</p>
-
-            <div className="mt-4 w-full">
-              <button onClick={handleLogout} className="w-full bg-primary text-white py-2 rounded hover:bg-primary-600">Logout</button>
-
-              {!editMode ? (
-                <button onClick={() => setEditMode(true)} className="w-full mt-3 border border-gray-200 py-2 rounded">Edit profile</button>
-              ) : (
-                <div className="w-full mt-3 space-y-2">
-                  <div>
-                    <label className="text-xs text-gray-600">Name</label>
-                    <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full border rounded px-3 py-2" />
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-gray-600">Photo URL</label>
-                    <input value={photo} onChange={(e) => setPhoto(e.target.value)} className="mt-1 w-full border rounded px-3 py-2" />
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={async () => {
-                        try {
-                          await updateProfileData({ displayName: name || null, photoURL: photo || null });
-                          setEditMode(false);
-                          // small feedback
-                          toast.success('Profile updated');
-                        } catch (err) {
-                          console.error(err);
-                          toast.error('Failed to update profile');
-                        }
-                      }}
-                      className="flex-1 bg-primary text-white py-2 rounded"
-                    >
-                      Save
-                    </button>
-
-                    <button onClick={() => { setEditMode(false); setName(currentUser.displayName || ""); setPhoto(currentUser.photoURL || ""); }} className="flex-1 border py-2 rounded">Cancel</button>
-                  </div>
-                </div>
-              )}
-              <div className="mt-3">
-                {!showChangePassword ? (
-                  <button onClick={() => setShowChangePassword(true)} className="w-full mt-2 border border-gray-200 py-2 rounded">Change password</button>
-                ) : (
-                  <div className="space-y-2 mt-2">
-                    <input type="password" placeholder="New password" value={passwordInputs.newPass} onChange={e=>setPasswordInputs(p=>({...p, newPass: e.target.value}))} className="w-full border rounded px-3 py-2" />
-                    <input type="password" placeholder="Confirm new password" value={passwordInputs.confirm} onChange={e=>setPasswordInputs(p=>({...p, confirm: e.target.value}))} className="w-full border rounded px-3 py-2" />
-                    <div className="flex gap-2">
-                      <button onClick={handleChangePassword} className="flex-1 bg-primary text-white py-2 rounded">Save password</button>
-                      <button onClick={() => { setShowChangePassword(false); setPasswordInputs({ current: '', newPass: '', confirm: '' }); }} className="flex-1 border py-2 rounded">Cancel</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
+
+          <nav className="mt-6 space-y-1">
+            <button onClick={() => { setSelectedTab('overview'); setAddressesMode(false); }} className={`w-full text-left px-3 py-2 rounded ${selectedTab==='overview' ? 'bg-primary text-white' : 'hover:bg-gray-50'}`}>
+              <div className="flex items-center gap-3"><FiBox /> <span>Overview</span></div>
+            </button>
+            <button onClick={() => { setSelectedTab('orders'); setAddressesMode(false); }} className={`w-full text-left px-3 py-2 rounded ${selectedTab==='orders' ? 'bg-primary text-white' : 'hover:bg-gray-50'}`}>
+              <div className="flex items-center gap-3"><FiBox /> <span>Orders</span></div>
+            </button>
+            <button onClick={() => { setSelectedTab('favorites'); setAddressesMode(false); }} className={`w-full text-left px-3 py-2 rounded ${selectedTab==='favorites' ? 'bg-primary text-white' : 'hover:bg-gray-50'}`}>
+              <div className="flex items-center gap-3"><FiHeart /> <span>Favorites</span></div>
+            </button>
+            <button onClick={() => { setSelectedTab('personal'); setAddressesMode(false); }} className={`w-full text-left px-3 py-2 rounded ${selectedTab==='personal' ? 'bg-primary text-white' : 'hover:bg-gray-50'}`}>
+              <div className="flex items-center gap-3"><FiUser /> <span>Personal data</span></div>
+            </button>
+            <button onClick={() => { setSelectedTab('password'); setShowChangePassword(true); }} className={`w-full text-left px-3 py-2 rounded ${selectedTab==='password' ? 'bg-primary text-white' : 'hover:bg-gray-50'}`}>
+              <div className="flex items-center gap-3"><FiLock /> <span>Change password</span></div>
+            </button>
+            <button onClick={() => { setSelectedTab('addresses'); setAddressesMode(true); }} className={`w-full text-left px-3 py-2 rounded ${selectedTab==='addresses' ? 'bg-primary text-white' : 'hover:bg-gray-50'}`}>
+              <div className="flex items-center gap-3"><FiMapPin /> <span>Addresses</span></div>
+            </button>
+            <button onClick={handleLogout} className="w-full text-left px-3 py-2 rounded hover:bg-gray-50 text-left text-red-600">
+              <div className="flex items-center gap-3"><FiLogOut /> <span>Sign out</span></div>
+            </button>
+          </nav>
 
           <div className="mt-6 pt-4 border-t">
             <div className="flex justify-between text-sm text-gray-600">
@@ -205,44 +195,11 @@ export default function ProfilePage() {
           </div>
         </aside>
 
-        {/* Right: Orders and Account */}
+        {/* Right: Content area */}
         <main className="lg:col-span-3">
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-xl font-semibold">Account</h2>
-            <p className="text-gray-600 mt-2">Manage your account information, view recent orders and download invoices.</p>
-            <div className="mt-4 flex flex-wrap gap-3">
-                {/* Helper to create animated tab buttons */}
-                {(() => {
-                  const btn = (key, label, onClick) => {
-                    const active = selectedTab === key;
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => { setSelectedTab(key); onClick && onClick(); }}
-                        aria-pressed={active}
-                        className={`px-4 py-2 rounded transition transform duration-150 ease-out ${active ? 'bg-primary text-white shadow-lg scale-105' : 'border bg-white text-gray-700 hover:shadow-sm'}`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  };
-
-                  return (
-                    <>
-                      {btn('orders', 'Order history', () => navigate('/orders'))}
-                      {btn('addresses', 'Addresses', () => { setAddressesMode(true); setEditMode(false); })}
-                      {btn('profile', 'Profile settings', () => { setEditMode(true); setAddressesMode(false); })}
-                      {btn('overview', 'Account overview', () => navigate('/profile'))}
-                      {btn('payments', 'Payment methods', () => { setSelectedTab('payments'); setAddressesMode(false); })}
-                    </>
-                  );
-                })()}
-            </div>
-          </div>
-
-          {/* Show orders only when addressesMode is not active */}
-          {!addressesMode && selectedTab !== 'payments' && (
-            <div className="bg-white rounded-lg shadow p-6">
+          {/* Overview / Orders */}
+          {(selectedTab === 'overview' || selectedTab === 'orders') && (
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold">Order History</h3>
                 <div className="text-sm text-gray-500">Showing recent orders</div>
@@ -277,6 +234,87 @@ export default function ProfilePage() {
                   ))}
                 </ul>
               )}
+            </div>
+          )}
+
+          {/* Favorites / Wishlist */}
+          {selectedTab === 'favorites' && (
+            <div className="bg-white rounded-lg shadow p-6 mt-6">
+              <h4 className="text-lg font-medium mb-3">Favorites</h4>
+              {wishlistLoading ? (
+                <div className="text-gray-500">Loading…</div>
+              ) : wishlist.length === 0 ? (
+                <div className="text-gray-500">No favorites yet.</div>
+              ) : (
+                <ul className="space-y-3">
+                  {wishlist.map(item => (
+                    <li key={item.id} className="flex items-center justify-between border rounded p-3">
+                      <div className="flex items-center gap-3">
+                        <img src={item.thumbnail} alt="thumb" className="w-14 h-14 object-cover rounded" />
+                        <div>
+                          <div className="font-medium">{item.name}</div>
+                          <div className="text-sm text-gray-600">₹{item.price}</div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => navigate(`/product/${item.productId}`)} className="px-3 py-1 border rounded">View</button>
+                        <button onClick={async () => {
+                          try {
+                            await removeFromWishlist(currentUser.uid, item.productId);
+                            setWishlist(prev => prev.filter(x => x.id !== item.id));
+                            toast.success('Removed from favorites');
+                          } catch (err) { console.error(err); toast.error('Failed to remove'); }
+                        }} className="px-3 py-1 border rounded text-red-600">Remove</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* Personal data edit */}
+          {selectedTab === 'personal' && (
+            <div className="bg-white rounded-lg shadow p-6 mt-6">
+              <h4 className="text-lg font-medium mb-3">Personal information</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-gray-600">Display name</label>
+                  <input value={name} onChange={e => setName(e.target.value)} className="mt-1 w-full border rounded px-3 py-2" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">Photo URL</label>
+                  <input value={photo} onChange={e => setPhoto(e.target.value)} className="mt-1 w-full border rounded px-3 py-2" />
+                </div>
+              </div>
+              <div className="mt-4 flex gap-2">
+                <button onClick={async () => {
+                  try {
+                    await updateProfileData({ displayName: name || null, photoURL: photo || null });
+                    toast.success('Profile updated');
+                    
+                  } catch (err) {
+                    console.error(err);
+                    toast.error('Failed to update profile');
+                  }
+                }} className="btn-primary">Save</button>
+                <button onClick={() => { setName(currentUser.displayName || ''); setPhoto(currentUser.photoURL || ''); }} className="border px-4 py-2 rounded">Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Change password */}
+          {(selectedTab === 'password' || showChangePassword) && (
+            <div className="bg-white rounded-lg shadow p-6 mt-6">
+              <h4 className="text-lg font-medium mb-3">Change password</h4>
+              <div className="space-y-3 max-w-md">
+                <input type="password" placeholder="New password" value={passwordInputs.newPass} onChange={e=>setPasswordInputs(p=>({...p, newPass: e.target.value}))} className="w-full border rounded px-3 py-2" />
+                <input type="password" placeholder="Confirm new password" value={passwordInputs.confirm} onChange={e=>setPasswordInputs(p=>({...p, confirm: e.target.value}))} className="w-full border rounded px-3 py-2" />
+                <div className="flex gap-2">
+                  <button onClick={handleChangePassword} className="btn-primary">Save password</button>
+                  <button onClick={() => { setShowChangePassword(false); setPasswordInputs({ current: '', newPass: '', confirm: '' }); setSelectedTab('overview'); }} className="border px-4 py-2 rounded">Cancel</button>
+                </div>
+              </div>
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import CategoryBar from "../components/Layout/CategoryBar";
+import { useLocation } from "react-router-dom";
 import ProductCard from "../components/Products/ProductCard";
 import { useSearch } from "../contexts/SearchContext";
 import { db } from "../config/firebaseConfig";
@@ -7,16 +7,24 @@ import { collection, query, onSnapshot } from "firebase/firestore";
 import localProducts from "../data/products";
 
 export default function HomePage() {
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const location = useLocation();
+  const qs = new URLSearchParams(location.search);
+  const initialCategory = qs.get("category") || "All";
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const { searchQuery } = useSearch();
   const [products, setProducts] = useState([]);
 
   useEffect(() => {
-    const q = query(collection(db, "products"));
+    // update selected category when URL changes
+    const params = new URLSearchParams(location.search);
+    const cat = params.get("category") || "All";
+    setSelectedCategory(cat);
+
+    const fsQuery = query(collection(db, "products"));
     let unsub;
     try {
       unsub = onSnapshot(
-        q,
+        fsQuery,
         (snap) => {
           console.debug('Firestore products snapshot size:', snap.size);
           if (snap.size > 0) console.debug('Product doc ids:', snap.docs.slice(0, 5).map((d) => d.id));
@@ -40,11 +48,23 @@ export default function HomePage() {
     }
 
     return () => unsub && unsub();
-  }, []);
+  }, [location.search]);
 
   const filteredProducts = products.filter((product) => {
+    const CATEGORY_MAP = {
+      All: null,
+      Men: ["Fashion"],
+      Women: ["Fashion"],
+      Kids: ["Fashion"],
+      Home: ["Home"],
+      Beauty: ["Fashion", "Beauty"],
+      Genz: ["Electronics"],
+      Studio: ["Home"]
+    };
+
+    const mapped = CATEGORY_MAP[selectedCategory] ?? null;
     const matchesCategory =
-      selectedCategory === "All" || product.category === selectedCategory;
+      selectedCategory === "All" || (mapped ? mapped.includes(product.category) : product.category === selectedCategory);
     const matchesSearch = product.name
       .toLowerCase()
       .includes((searchQuery || "").toLowerCase());
@@ -53,8 +73,6 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col items-center w-full">
-      <CategoryBar onSelectCategory={setSelectedCategory} />
-
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mt-6 w-full max-w-7xl px-4">
         {filteredProducts.map((product) => (
           <ProductCard key={product.id} product={product} />

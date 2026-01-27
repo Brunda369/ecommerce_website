@@ -24,10 +24,17 @@ export async function addToWishlist(uid, product) {
     name: product.name || product.title || '',
     thumbnail: product.thumbnail || product.image || (product.images && product.images[0]) || '',
     price: product.price || 0,
-    addedAt: serverTimestamp() || new Date().toISOString()
+    // Use server timestamp for canonical ordering, but also include a client-side timestamp
+    addedAt: serverTimestamp(),
+    addedAtClient: new Date().toISOString()
   };
-  const res = await addDoc(pref, payload);
-  return { id: res.id, ...payload };
+  try {
+    const res = await addDoc(pref, payload);
+    return { id: res.id, ...payload };
+  } catch (err) {
+    console.error('addToWishlist failed', err, { uid, product });
+    throw err;
+  }
 }
 
 export async function removeFromWishlist(uid, productId) {
@@ -36,6 +43,11 @@ export async function removeFromWishlist(uid, productId) {
   const q = query(pref, where('productId', '==', String(productId)));
   const snap = await getDocs(q);
   if (snap.empty) return false;
-  await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'users', uid, 'wishlist', d.id))));
-  return true;
+  try {
+    await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'users', uid, 'wishlist', d.id))));
+    return true;
+  } catch (err) {
+    console.error('removeFromWishlist failed', err, { uid, productId });
+    throw err;
+  }
 }
